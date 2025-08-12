@@ -9,6 +9,8 @@ import { listAttendanceRange, upsertAttendance, subscribeAttendance } from '../d
 
 // --- Data Generation & Persistence ---
 
+// FIX: The 'imageScheduleData' constant has been removed.
+// The function below is updated to no longer reference it.
 
 const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
     const schedule = generateInitialSchedule();
@@ -16,6 +18,7 @@ const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
     const year = today.getFullYear();
     const july = 6; // 0-indexed month for July
 
+    // Ensure all 31 days of July are initialized in the schedule object
     for (let day = 1; day <= 31; day++) {
         const date = new Date(Date.UTC(year, july, day));
         const dateString = date.toISOString().split('T')[0];
@@ -24,20 +27,16 @@ const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
         }
     }
 
+    // Assign every guard their default shift for every day in the schedule
     guards.forEach(guard => {
         Object.keys(schedule).forEach(dateStr => {
-            const date = new Date(dateStr + 'T00:00:00');
-            let shiftId = guard.defaultShiftId;
-            
-            if (date.getFullYear() === year && date.getMonth() === july) {
-                const dayOfMonth = date.getDate();
-                const guardSchedulePattern = imageScheduleData[guard.employeeId];
-                if (guardSchedulePattern && dayOfMonth <= guardSchedulePattern.length) {
-                    shiftId = guardSchedulePattern[dayOfMonth - 1];
-                }
-            }
+            // The complex logic using imageScheduleData has been removed.
+            // We now simply assign the guard's default shift.
             if (!schedule[dateStr]) schedule[dateStr] = {};
-            schedule[dateStr][guard.id] = { guardId: guard.id, shiftId: shiftId };
+            schedule[dateStr][guard.id] = { 
+                guardId: guard.id, 
+                shiftId: guard.defaultShiftId 
+            };
         });
     });
 
