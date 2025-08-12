@@ -1,15 +1,94 @@
 import React, { createContext, useContext, useReducer, useCallback, useMemo, ReactNode, useEffect } from 'react';
 import { Guard, Shift, AttendanceRecord, FullSchedule, AttendanceStatus, GuardianContextType, Language, User, AppState, Action, ReportTemplate, Theme } from '../types';
+import { GUARDS, SHIFTS, generateInitialSchedule } from '../constants';
 import { supabase } from '../lib/supabase';
 import { listGuards, createGuard as createGuardDb, updateGuardDb, deleteGuardDb, subscribeGuards } from '../data/guards';
 import { seedDefaultShiftsIfEmpty, listShifts } from '../data/shifts';
 import { listScheduleRange, upsertSchedule, subscribeSchedule } from '../data/schedule';
 import { listAttendanceRange, upsertAttendance, subscribeAttendance } from '../data/attendance';
 
-// --- Initial State ---
+// --- Data Generation & Persistence ---
+
+
+const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
+    const schedule = generateInitialSchedule();
+    const today = new Date();
+    const year = today.getFullYear();
+    const july = 6; // 0-indexed month for July
+
+    for (let day = 1; day <= 31; day++) {
+        const date = new Date(Date.UTC(year, july, day));
+        const dateString = date.toISOString().split('T')[0];
+        if (!schedule[dateString]) {
+            schedule[dateString] = {};
+        }
+    }
+
+    guards.forEach(guard => {
+        Object.keys(schedule).forEach(dateStr => {
+            const date = new Date(dateStr + 'T00:00:00');
+            let shiftId = guard.defaultShiftId;
+            
+            if (date.getFullYear() === year && date.getMonth() === july) {
+                const dayOfMonth = date.getDate();
+                const guardSchedulePattern = imageScheduleData[guard.employeeId];
+                if (guardSchedulePattern && dayOfMonth <= guardSchedulePattern.length) {
+                    shiftId = guardSchedulePattern[dayOfMonth - 1];
+                }
+            }
+            if (!schedule[dateStr]) schedule[dateStr] = {};
+            schedule[dateStr][guard.id] = { guardId: guard.id, shiftId: shiftId };
+        });
+    });
+
+    return schedule;
+};
+
+const generateInitialAttendance = (schedule: FullSchedule): Record<string, Record<string, AttendanceRecord>> => {
+    const attendance: Record<string, Record<string, AttendanceRecord>> = {};
+    const year = new Date().getFullYear();
+    const july = 6; // 0-indexed month for July
+
+    for (let day = 1; day <= 31; day++) {
+        const date = new Date(Date.UTC(year, july, day));
+        const dateString = date.toISOString().split('T')[0];
+        
+        const dailySchedule = schedule[dateString];
+        if (!dailySchedule) continue;
+
+        attendance[dateString] = {};
+
+        const allGuardIds = Object.keys(dailySchedule);
+        
+        const onDutyGuardIds = allGuardIds.filter(guardId => dailySchedule[guardId].shiftId !== 'off');
+        const offDutyGuardIds = allGuardIds.filter(guardId => dailySchedule[guardId].shiftId === 'off');
+        
+        let availableCovers = [...offDutyGuardIds];
+
+        for (const guardId of onDutyGuardIds) {
+            const shiftId = dailySchedule[guardId].shiftId;
+            const isAbsent = Math.random() < 0.15;
+
+            if (isAbsent) {
+                const record: AttendanceRecord = { guardId, shiftId, status: AttendanceStatus.Absent };
+                if (availableCovers.length > 0) {
+                    const coverGuardId = availableCovers.splice(Math.floor(Math.random() * availableCovers.length), 1)[0];
+                    record.coveredBy = coverGuardId;
+                    if (Math.random() < 0.5) record.isOvertime = true;
+                }
+                attendance[dateString][guardId] = record;
+            } else {
+                attendance[dateString][guardId] = { guardId, shiftId, status: AttendanceStatus.Present };
+            }
+        }
+    }
+    return attendance;
+};
+
+const defaultAdminUser: User = { id: 'admin-user-01', username: 'admin', password: 'password', role: 'admin' };
 
 const getInitialState = (): AppState => {
-    let users: User[] = [];
+    let users: User[] = [defaultAdminUser];
     let currentUser: User | null = null;
     let reportTemplates: ReportTemplate[] = [];
     let theme: Theme = 'light';
@@ -33,12 +112,19 @@ const getInitialState = (): AppState => {
         console.error('Failed to parse data from storage', e);
     }
 
+    const initialSchedule = generateInitialScheduleWithData(GUARDS);
+    const initialAttendance = generateInitialAttendance(initialSchedule);
+
+    // Ensure at least one admin exists
+    if (!users.some(u => u.role === 'admin')) {
+        users = [defaultAdminUser, ...users];
+    }
+
     return {
-        // Start with empty data, to be populated from the API
-        guards: [],
-        shifts: [],
-        schedule: {},
-        attendance: {},
+        guards: GUARDS,
+        shifts: SHIFTS,
+        schedule: initialSchedule,
+        attendance: initialAttendance,
         language: 'en',
         theme,
         users,
