@@ -9,16 +9,12 @@ import { listAttendanceRange, upsertAttendance, subscribeAttendance } from '../d
 
 // --- Data Generation & Persistence ---
 
-// FIX: The 'imageScheduleData' constant has been removed.
-// The function below is updated to no longer reference it.
-
 const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
     const schedule = generateInitialSchedule();
     const today = new Date();
     const year = today.getFullYear();
     const july = 6; // 0-indexed month for July
 
-    // Ensure all 31 days of July are initialized in the schedule object
     for (let day = 1; day <= 31; day++) {
         const date = new Date(Date.UTC(year, july, day));
         const dateString = date.toISOString().split('T')[0];
@@ -27,11 +23,8 @@ const generateInitialScheduleWithData = (guards: Guard[]): FullSchedule => {
         }
     }
 
-    // Assign every guard their default shift for every day in the schedule
     guards.forEach(guard => {
         Object.keys(schedule).forEach(dateStr => {
-            // The complex logic using imageScheduleData has been removed.
-            // We now simply assign the guard's default shift.
             if (!schedule[dateStr]) schedule[dateStr] = {};
             schedule[dateStr][guard.id] = { 
                 guardId: guard.id, 
@@ -160,6 +153,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
             return { ...state, users: filteredUsers };
         }
         case 'ADD_GUARD': {
+            // Prevent adding a duplicate guard if it somehow gets dispatched twice
+            if (state.guards.some(g => g.id === action.payload.guard.id)) {
+                return state; 
+            }
             const newGuard = action.payload.guard;
             const todayStr = new Date().toISOString().split('T')[0];
             const newSchedule = { ...state.schedule };
@@ -284,11 +281,11 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
                 // Realtime subscription for guards
                 const sub = subscribeGuards((evt) => {
                     if (evt.type === 'INSERT' && evt.new) {
-                        dispatch({ type: 'ADD_GUARD', payload: { guard: evt.new } });
+                        dispatchAndBroadcast({ type: 'ADD_GUARD', payload: { guard: evt.new } });
                     } else if (evt.type === 'UPDATE' && evt.new) {
-                        dispatch({ type: 'UPDATE_GUARD', payload: { guard: evt.new } });
+                        dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard: evt.new } });
                     } else if (evt.type === 'DELETE' && evt.oldId) {
-                        dispatch({ type: 'DELETE_GUARD', payload: { guardId: evt.oldId } });
+                        dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId: evt.oldId } });
                     }
                 });
                 // Realtime for schedule
@@ -321,14 +318,11 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     // Effect to listen for actions broadcasted from other tabs
     useEffect(() => {
         const handleMessage = (event: MessageEvent<Action>) => {
-            // When an action is received from another tab, dispatch it to update the local state.
-            // This syncs the state without causing a broadcast loop.
             dispatch(event.data);
         };
 
         channel.addEventListener('message', handleMessage);
         
-        // Cleanup listener on component unmount
         return () => {
             channel.removeEventListener('message', handleMessage);
         };
@@ -366,7 +360,6 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [state.theme]);
 
 
-    // Create a new dispatcher function that also broadcasts the action to other tabs.
     const dispatchAndBroadcast = useCallback((action: Action) => {
         dispatch(action);
         channel.postMessage(action);
@@ -403,45 +396,64 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     const setLanguage = useCallback((language: Language) => dispatch({ type: 'SET_LANGUAGE', payload: { language } }), []);
     const setTheme = useCallback((theme: Theme) => dispatchAndBroadcast({ type: 'SET_THEME', payload: { theme } }), [dispatchAndBroadcast]);
 
+    // FIX: Added validation to prevent duplicates and simplified the data flow.
     const addGuard = useCallback(async (guard: Omit<Guard, 'id'>) => {
-        try {
-            const created = await createGuardDb(guard);
-            dispatchAndBroadcast({ type: 'ADD_GUARD', payload: { guard: created } });
-        } catch (e) {
-            console.error('Failed to create guard in Supabase, falling back to local', e);
-            const newGuard: Guard = { ...guard, id: crypto.randomUUID() };
-            dispatchAndBroadcast({ type: 'ADD_GUARD', payload: { guard: newGuard } });
+        // 1. Validate: Check if a guard with the same employeeId already exists (case-insensitive).
+        if (state.guards.some(g => g.employeeId.toLowerCase() === guard.employeeId.toLowerCase())) {
+            const errorMessage = `A guard with Employee ID "${guard.employeeId}" already exists.`;
+            console.error(errorMessage);
+            // Throw an error to be caught by the UI, so it can display a message.
+            throw new Error(errorMessage);
         }
-    }, [dispatchAndBroadcast]);
 
+        // 2. Act: Attempt to create the guard in the database.
+        // No need to manually dispatch on success; the realtime subscription will handle it.
+        try {
+            await createGuardDb(guard);
+        } catch (e) {
+            console.error('Failed to create guard in Supabase. State was not updated.', e);
+            // Re-throw the error so the UI knows the operation failed.
+            throw e;
+        }
+    }, [state.guards]);
+
+    // FIX: Simplified to let the realtime subscription handle the state update on success.
     const updateGuard = useCallback(async (guard: Guard) => {
         try {
-            const updated = await updateGuardDb(guard);
-            dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard: updated } });
+            await updateGuardDb(guard);
         } catch (e) {
-            console.error('Failed to update guard in Supabase, applying local update', e);
+            console.error('Failed to update guard in Supabase, applying local update as fallback', e);
+            // As a fallback on DB error, update the local state manually.
             dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard } });
+            throw e;
         }
     }, [dispatchAndBroadcast]);
 
+    // FIX: Simplified to let the realtime subscription handle the state update on success.
     const deleteGuard = useCallback(async (guardId: string) => {
         try {
             await deleteGuardDb(guardId);
         } catch (e) {
-            console.error('Failed to delete guard in Supabase, removing locally', e);
+            console.error('Failed to delete guard in Supabase, removing locally as fallback', e);
+             // As a fallback on DB error, update the local state manually.
+            dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId } });
+            throw e;
         }
-        dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId } });
     }, [dispatchAndBroadcast]);
+    
     const updateSchedule = useCallback(async (date: string, guardId: string, shiftId: string) => {
+        // Optimistic UI update for responsiveness
         dispatchAndBroadcast({ type: 'UPDATE_SCHEDULE', payload: { date, guardId, shiftId } });
         try {
             await upsertSchedule(date, guardId, shiftId);
         } catch (e) {
             console.error('Failed to persist schedule to Supabase', e);
+            // Here you might want to add logic to revert the change if the DB call fails
         }
     }, [dispatchAndBroadcast]);
 
     const updateAttendance = useCallback(async (date: string, guardId: string, updates: Partial<AttendanceRecord>) => {
+        // Optimistic UI update for responsiveness
         dispatchAndBroadcast({ type: 'UPDATE_ATTENDANCE', payload: { date, guardId, updates } });
         try {
             await upsertAttendance(date, guardId, updates);
