@@ -1,0 +1,5 @@
+{
+  "name": "Security Tracker",
+  "description": "A web application for tracking security guard attendance, managing schedules, and generating payroll reports. It provides a real-time view of daily attendance, streamlines shift covers and overtime, and enhances operational efficiency.",
+  "requestFramePermissions": []
+}
