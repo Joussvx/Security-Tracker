@@ -33,7 +33,7 @@ async function findScheduleEntryId(date: string, guardId: string): Promise<strin
     .limit(1)
     .maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
-  return (data as any)?.id ?? null;
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 export async function upsertSchedule(date: string, guardId: string, shiftId: string): Promise<void> {
@@ -79,7 +79,7 @@ export async function bulkInsertScheduleFromFull(full: FullSchedule, startDate: 
   }
 }
 
-export function subscribeSchedule(onChange: (event: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbScheduleRow }) => void) {
+export function subscribeSchedule(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbScheduleRow }) => void) {
   return supabase
     .channel('schedule_changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, (payload) => {

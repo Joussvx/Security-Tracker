@@ -8,7 +8,7 @@ import { Shift } from '../types';
 interface ShiftSelectorProps {
     shifts: Shift[];
     selectedShiftId: string;
-    onShiftChange: (shiftId: string) => void;
+    onShiftChange: (newShiftId: string) => void;
     disabled?: boolean;
     isCondensed?: boolean;
 }
@@ -61,8 +61,8 @@ const ShiftSelector: React.FC<ShiftSelectorProps> = ({ shifts, selectedShiftId, 
         setHighlightedIndex(-1);
     }, []);
 
-    const handleSelect = (shiftId: string) => {
-        onShiftChange(shiftId);
+    const handleSelect = (newShiftId: string) => {
+        onShiftChange(newShiftId);
         closeMenu();
     };
     

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useGuardian } from '../contexts/GuardianContext';
-import { Language, User, Theme } from '../types';
+import { Language, User } from '../types';
 import { useTranslations } from '../hooks/useTranslations';
 import Icon from './Icon';
 import CustomSelect from './CustomSelect';

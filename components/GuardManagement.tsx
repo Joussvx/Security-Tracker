@@ -2,7 +2,7 @@
 
 
 import React, { useState, useMemo, FC } from 'react';
-import { Guard, Shift } from '../types';
+import { Guard } from '../types';
 import Icon from './Icon';
 import { useGuardian } from '../contexts/GuardianContext';
 import { useTranslations } from '../hooks/useTranslations';
@@ -13,12 +13,12 @@ interface GuardRowProps {
     guard: Guard;
     isEditing: boolean;
     editedGuardData: Partial<Omit<Guard, 'id'>>;
-    onEditClick: (guard: Guard) => void;
+    onEditClick: (g: Guard) => void;
     onCancelClick: () => void;
     onSaveClick: () => void;
-    onDeleteClick: (guard: Guard) => void;
-    onEditInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onShiftChange: (value: string) => void;
+    onDeleteClick: (g: Guard) => void;
+    onEditInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    onShiftChange: (newValue: string) => void;
     shiftOptions: SelectOption[];
     isViewer: boolean;
 }
@@ -42,7 +42,7 @@ const GuardRow: FC<GuardRowProps> = React.memo(({
                 <td className="whitespace-nowrap px-3 py-2">
                     <CustomSelect
                         options={shiftOptions}
-                        value={editedGuardData.defaultShiftId || ''}
+                        selectedValue={editedGuardData.defaultShiftId || ''}
                         onChange={onShiftChange}
                     />
                 </td>
@@ -68,7 +68,7 @@ const GuardRow: FC<GuardRowProps> = React.memo(({
         </tr>
     );
 });
-
+GuardRow.displayName = 'GuardRow';
 const GuardManagement: React.FC = () => {
   const { guards, shifts, addGuard, updateGuard, deleteGuard, currentUser } = useGuardian();
   const { t } = useTranslations();
@@ -85,8 +85,8 @@ const GuardManagement: React.FC = () => {
     setNewGuard(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddGuard = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddGuard = (event: React.FormEvent) => {
+    event.preventDefault();
     if (isViewer) return;
     if (newGuard.name && newGuard.employeeId) {
       addGuard(newGuard);
@@ -95,10 +95,10 @@ const GuardManagement: React.FC = () => {
     }
   };
 
-  const handleEditClick = (guard: Guard) => {
+  const handleEditClick = (g: Guard) => {
     if (isViewer) return;
-    setEditingGuardId(guard.id);
-    setEditedGuardData({ name: guard.name, employeeId: guard.employeeId, defaultShiftId: guard.defaultShiftId });
+    setEditingGuardId(g.id);
+    setEditedGuardData({ name: g.name, employeeId: g.employeeId, defaultShiftId: g.defaultShiftId });
   };
 
   const handleCancelClick = () => {
@@ -116,14 +116,14 @@ const GuardManagement: React.FC = () => {
     setEditedGuardData({});
   };
   
-  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const handleEditInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = event.target;
     setEditedGuardData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleDeleteClick = (guard: Guard) => {
+  const handleDeleteClick = (g: Guard) => {
     if (isViewer) return;
-    setConfirmState({ open: true, guard });
+    setConfirmState({ open: true, guard: g });
   };
 
   const confirmDelete = () => {
@@ -181,8 +181,8 @@ const GuardManagement: React.FC = () => {
                                     <CustomSelect
                                         aria-labelledby="default-shift-label"
                                         options={shiftOptions}
-                                        value={newGuard.defaultShiftId}
-                                        onChange={(value) => setNewGuard(prev => ({ ...prev, defaultShiftId: value }))}
+                                        selectedValue={newGuard.defaultShiftId}
+                                        onChange={(newValue) => setNewGuard(prev => ({ ...prev, defaultShiftId: newValue }))}
                                     />
                                 </div>
                             </div>
@@ -219,7 +219,7 @@ const GuardManagement: React.FC = () => {
                                     onSaveClick={handleSaveClick}
                                     onDeleteClick={handleDeleteClick}
                                     onEditInputChange={handleEditInputChange}
-                                    onShiftChange={(value) => setEditedGuardData(prev => ({ ...prev, defaultShiftId: value }))}
+                                    onShiftChange={(newValue) => setEditedGuardData(prev => ({ ...prev, defaultShiftId: newValue }))}
                                     shiftOptions={shiftOptions}
                                     isViewer={isViewer}
                                 />

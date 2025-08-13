@@ -11,7 +11,13 @@ interface BottomNavBarProps {
   setCurrentView: (view: View) => void;
 }
 
-const navItems: { view: View; labelKey: 'dashboard' | 'schedule' | 'guards' | 'reports' | 'settings'; icon: 'dashboard' | 'calendar' | 'users' | 'report' | 'cog' }[] = [
+interface NavItem {
+  view: View;
+  labelKey: 'dashboard' | 'schedule' | 'guards' | 'reports' | 'settings';
+  icon: 'dashboard' | 'calendar' | 'users' | 'report' | 'cog';
+}
+
+const navItems: NavItem[] = [
   { view: 'Dashboard', labelKey: 'dashboard', icon: 'dashboard' },
   { view: 'Schedule', labelKey: 'schedule', icon: 'calendar' },
   { view: 'Guards', labelKey: 'guards', icon: 'users' },

@@ -12,7 +12,7 @@ export interface SelectOption {
 
 interface CustomSelectProps {
     options: SelectOption[];
-    value: string;
+    selectedValue: string;
     onChange: (value: string) => void;
     placeholder?: string;
     className?: string;
@@ -22,18 +22,18 @@ interface CustomSelectProps {
     ['aria-labelledby']?: string;
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, placeholder, className = '', allowClear = false, disabled = false, ...ariaProps }) => {
+const CustomSelect: React.FC<CustomSelectProps> = ({ options, selectedValue, onChange, placeholder, className = '', allowClear = false, disabled = false, ...ariaProps }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [highlightedIndex, setHighlightedIndex] = useState(-1);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     
-    const selectedOption = options.find(opt => opt.value === value);
+    const selectedOption = options.find(opt => opt.value === selectedValue);
 
     const openMenu = () => {
         if (disabled || !buttonRef.current) return;
-        setHighlightedIndex(options.findIndex(o => o.value === value));
+        setHighlightedIndex(options.findIndex(o => o.value === selectedValue));
         const rect = buttonRef.current.getBoundingClientRect();
         
         const menuHeightEstimate = Math.min(options.length * 40, 240) + 16;
@@ -156,14 +156,14 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, p
                         id={`option-${option.value}`}
                         className={`relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 ${highlightedIndex === index ? 'bg-gray-100 dark:bg-gray-600' : ''} dark:text-gray-100`}
                         role="option"
-                        aria-selected={option.value === value}
+                        aria-selected={option.value === selectedValue}
                         onClick={() => handleSelect(option.value)}
                         onMouseEnter={() => setHighlightedIndex(index)}
                     >
-                        <span className={`block truncate ${option.value === value ? 'font-semibold' : 'font-normal'}`}>
+                        <span className={`block truncate ${option.value === selectedValue ? 'font-semibold' : 'font-normal'}`}>
                             {option.label}
                         </span>
-                        {option.value === value && (
+                        {option.value === selectedValue && (
                             <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-indigo-600 dark:text-indigo-400" aria-hidden="true">
                                 <Icon icon="check" className="h-5 w-5" />
                             </span>
@@ -192,7 +192,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, p
                     {selectedOption ? selectedOption.label : placeholder}
                 </span>
                 <span className="absolute inset-y-0 right-0 flex items-center pr-2">
-                    {allowClear && value && !disabled && (
+                    {allowClear && selectedValue && !disabled && (
                         <button type="button" onClick={handleClear} className="pointer-events-auto mr-1 cursor-pointer rounded-full p-0.5 hover:bg-gray-200 dark:hover:bg-gray-500" aria-label="Clear selection">
                             <Icon icon="x" className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                         </button>
