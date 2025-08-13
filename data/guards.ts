@@ -64,7 +64,7 @@ export async function deleteGuardDb(guardId: string): Promise<void> {
 
 export function subscribeGuards(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; new?: Guard; oldId?: string }) => void) {
   return supabase
-    .channel('guards_changes')
+    .channel('guards_changes', { config: { broadcast: { self: false } } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'guards' }, (payload) => {
       if (payload.eventType === 'INSERT') {
         onChange({ type: 'INSERT', new: dbRowToGuard(payload.new as DbGuardRow) });

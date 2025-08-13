@@ -59,7 +59,7 @@ export async function upsertAttendance(date: string, guardId: string, updates: P
 
 export function subscribeAttendance(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbAttendanceRow }) => void) {
   return supabase
-    .channel('attendance_changes')
+    .channel('attendance_changes', { config: { broadcast: { self: false } } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         onChange({ type: payload.eventType, row: payload.new as DbAttendanceRow });

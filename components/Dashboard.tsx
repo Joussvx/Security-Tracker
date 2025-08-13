@@ -178,7 +178,7 @@ interface DashboardTableRowProps {
     coverOptions: {value: string; label: string}[];
     statusOptions: {value: string; label: string}[];
     onUpdateAttendance: (newUpdates: Partial<AttendanceRecord>) => void;
-    onUpdateCoverAttendance: (guardId: string, newUpdates: Partial<AttendanceRecord>) => void;
+    onUpdateCoverAttendance: (_guardId: string, newUpdates: Partial<AttendanceRecord>) => void;
     onOpenNoteModal: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
