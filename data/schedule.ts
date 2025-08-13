@@ -81,7 +81,7 @@ export async function bulkInsertScheduleFromFull(full: FullSchedule, startDate: 
 
 export function subscribeSchedule(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbScheduleRow }) => void) {
   return supabase
-    .channel('schedule_changes')
+    .channel('schedule_changes', { config: { broadcast: { self: false } } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         onChange({ type: payload.eventType, row: payload.new as DbScheduleRow });
