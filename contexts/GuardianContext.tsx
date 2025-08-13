@@ -1,11 +1,19 @@
-import React, { createContext, useContext, useReducer, useCallback, useMemo, ReactNode, useEffect } from 'react';
-import { Guard, Shift, AttendanceRecord, FullSchedule, AttendanceStatus, GuardianContextType, Language, User, AppState, Action, ReportTemplate, Theme } from '../types';
+import React, { createContext, useContext, useReducer, useCallback, useMemo, ReactNode, useEffect, useRef } from 'react';
+import { Guard, AttendanceRecord, FullSchedule, AttendanceStatus, GuardianContextType, Language, User, AppState, Action, ReportTemplate, Theme } from '../types';
 import { GUARDS, SHIFTS, generateInitialSchedule } from '../constants';
-import { supabase } from '../lib/supabase';
 import { listGuards, createGuard as createGuardDb, updateGuardDb, deleteGuardDb, subscribeGuards } from '../data/guards';
 import { seedDefaultShiftsIfEmpty, listShifts } from '../data/shifts';
 import { listScheduleRange, upsertSchedule, subscribeSchedule } from '../data/schedule';
 import { listAttendanceRange, upsertAttendance, subscribeAttendance } from '../data/attendance';
+
+// --- Helper Functions ---
+const generateId = (): string => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Fallback for older browsers or non-secure contexts
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 // --- Data Generation & Persistence ---
 
@@ -85,29 +93,33 @@ const getInitialState = (): AppState => {
     let reportTemplates: ReportTemplate[] = [];
     let theme: Theme = 'light';
 
-    try {
-        const usersJson = localStorage.getItem('users');
-        if (usersJson) users = JSON.parse(usersJson);
-        
-        const currentUserJson = sessionStorage.getItem('currentUser');
-        if(currentUserJson) currentUser = JSON.parse(currentUserJson);
+    // FIX: Guard against undefined browser globals (localStorage, etc.) in non-browser environments (e.g., SSR)
+    if (typeof window !== 'undefined') {
+        try {
+            const usersJson = localStorage.getItem('users');
+            if (usersJson) users = JSON.parse(usersJson);
+            
+            const currentUserJson = sessionStorage.getItem('currentUser');
+            if(currentUserJson) currentUser = JSON.parse(currentUserJson);
 
-        const templatesJson = localStorage.getItem('reportTemplates');
-        if (templatesJson) reportTemplates = JSON.parse(templatesJson);
+            const templatesJson = localStorage.getItem('reportTemplates');
+            if (templatesJson) reportTemplates = JSON.parse(templatesJson);
 
-        const storedTheme = localStorage.getItem('theme');
-        if (storedTheme === 'dark' || storedTheme === 'light') {
-            theme = storedTheme;
+            const storedTheme = localStorage.getItem('theme');
+            if (storedTheme === 'dark' || storedTheme === 'light') {
+                theme = storedTheme;
+            }
+        } catch (e) {
+            // FIX: Guard against undefined 'console'
+            if (typeof console !== 'undefined') {
+                console.error('Failed to parse data from storage', e);
+            }
         }
-
-    } catch (e) {
-        console.error('Failed to parse data from storage', e);
     }
 
     const initialSchedule = generateInitialScheduleWithData(GUARDS);
     const initialAttendance = generateInitialAttendance(initialSchedule);
 
-    // Ensure at least one admin exists
     if (!users.some(u => u.role === 'admin')) {
         users = [defaultAdminUser, ...users];
     }
@@ -148,12 +160,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
         case 'ADD_USER':
             return { ...state, users: [...state.users, action.payload.user] };
         case 'DELETE_USER': {
-            // Never delete admin users
             const filteredUsers = state.users.filter(u => u.role === 'admin' || u.id !== action.payload.userId);
             return { ...state, users: filteredUsers };
         }
         case 'ADD_GUARD': {
-            // Prevent adding a duplicate guard if it somehow gets dispatched twice
             if (state.guards.some(g => g.id === action.payload.guard.id)) {
                 return state; 
             }
@@ -195,18 +205,24 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 guards: state.guards.filter(g => g.id !== guardId),
                 schedule: Object.fromEntries(
                     Object.entries(state.schedule).map(([date, daily]) => {
-                        const { [guardId]: _, ...rest } = daily;
-                        return [date, rest];
+                        // FIX: Avoid 'no-unused-vars' for '_' by using a more explicit delete
+                        const newDaily = { ...daily };
+                        delete newDaily[guardId];
+                        return [date, newDaily];
                     })
                 ),
                 attendance: Object.fromEntries(
                     Object.entries(state.attendance).map(([date, daily]) => {
-                        const { [guardId]: _, ...rest } = daily;
+                        const newDaily = { ...daily };
+                        delete newDaily[guardId];
+
                         const cleaned = Object.fromEntries(
-                            Object.entries(rest).map(([gId, record]) => {
+                            Object.entries(newDaily).map(([gId, record]) => {
                                 if (record.coveredBy === guardId) {
-                                    const { coveredBy, ...restOfRecord } = record;
-                                    return [gId, restOfRecord];
+                                    // FIX: Avoid 'no-unused-vars' for 'coveredBy'
+                                    const newRecord = { ...record };
+                                    delete newRecord.coveredBy;
+                                    return [gId, newRecord];
                                 }
                                 return [gId, record];
                             })
@@ -251,11 +267,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
 
 const GuardianContext = createContext<GuardianContextType | undefined>(undefined);
 
-// Create a BroadcastChannel for real-time updates across tabs.
-const channel = new BroadcastChannel('guardian_updates');
-
 export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, getInitialState());
+    // FIX: use a ref to hold the channel instance so it's only created on the client.
+    const channelRef = useRef<BroadcastChannel | null>(null);
 
     // Initial load from Supabase with seeding and realtime
     useEffect(() => {
@@ -268,7 +283,6 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
                 const remoteGuards = await listGuards();
                 dispatch({ type: 'SET_GUARDS', payload: { guards: remoteGuards } });
 
-                // Load current month schedule and attendance
                 const today = new Date();
                 const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
                 const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -278,7 +292,6 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
                 const attendanceRange = await listAttendanceRange(firstDay, lastDay);
                 dispatch({ type: 'SET_ATTENDANCE', payload: { attendance: attendanceRange } });
 
-                // Realtime subscription for guards
                 const sub = subscribeGuards((evt) => {
                     if (evt.type === 'INSERT' && evt.new) {
                         dispatchAndBroadcast({ type: 'ADD_GUARD', payload: { guard: evt.new } });
@@ -288,81 +301,90 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
                         dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId: evt.oldId } });
                     }
                 });
-                // Realtime for schedule
                 const subSchedule = subscribeSchedule((evt) => {
                     const row = evt.row;
-                    const dateStr = row.date;
-                    const shiftId = row.shift_id || 'off';
-                    dispatch({ type: 'UPDATE_SCHEDULE', payload: { date: dateStr, guardId: row.guard_id, shiftId } });
+                    dispatch({ type: 'UPDATE_SCHEDULE', payload: { date: row.date, guardId: row.guard_id, shiftId: row.shift_id || 'off' } });
                 });
-                // Realtime for attendance
                 const subAttendance = subscribeAttendance((evt) => {
                     const r = evt.row;
                     const updates: Partial<AttendanceRecord> = {
-                        shiftId: r.shift_id || 'off',
-                        status: (r.status as AttendanceStatus) || AttendanceStatus.Scheduled,
-                        coveredBy: r.covered_by || undefined,
-                        isOvertime: r.is_overtime || undefined,
+                        shiftId: r.shift_id || 'off', status: (r.status as AttendanceStatus) || AttendanceStatus.Scheduled,
+                        coveredBy: r.covered_by || undefined, isOvertime: r.is_overtime || undefined,
                     };
                     dispatch({ type: 'UPDATE_ATTENDANCE', payload: { date: r.date, guardId: r.guard_id, updates } });
                 });
                 return () => { sub.unsubscribe(); subSchedule.unsubscribe(); subAttendance.unsubscribe(); };
             } catch (e) {
-                console.error('Failed to initialize from Supabase', e);
+                if (typeof console !== 'undefined') console.error('Failed to initialize from Supabase', e);
             }
         };
         const cleanup = init();
         return () => { Promise.resolve(cleanup).catch(() => undefined); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Effect to listen for actions broadcasted from other tabs
     useEffect(() => {
-        const handleMessage = (event: MessageEvent<Action>) => {
+        // FIX: Initialize BroadcastChannel only on the client-side to prevent 'no-undef' error.
+        if (typeof BroadcastChannel !== 'undefined' && !channelRef.current) {
+            channelRef.current = new BroadcastChannel('guardian_updates');
+        }
+
+        // FIX: Changed 'MessageEvent' type to a generic object to satisfy the linter.
+        const handleMessage = (event: { data: Action }) => {
             dispatch(event.data);
         };
 
-        channel.addEventListener('message', handleMessage);
+        channelRef.current?.addEventListener('message', handleMessage);
         
         return () => {
-            channel.removeEventListener('message', handleMessage);
+            channelRef.current?.removeEventListener('message', handleMessage);
         };
     }, []);
 
     useEffect(() => {
-        try {
-            localStorage.setItem('users', JSON.stringify(state.users));
-            localStorage.setItem('reportTemplates', JSON.stringify(state.reportTemplates));
-        } catch (e) { console.error('Failed to save data to localStorage', e); }
+        // FIX: Guard against undefined browser globals
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('users', JSON.stringify(state.users));
+                localStorage.setItem('reportTemplates', JSON.stringify(state.reportTemplates));
+            } catch (e) { if (typeof console !== 'undefined') console.error('Failed to save data to localStorage', e); }
+        }
     }, [state.users, state.reportTemplates]);
 
     useEffect(() => {
-        try {
-            if (state.currentUser) {
-                sessionStorage.setItem('currentUser', JSON.stringify(state.currentUser));
-            } else {
-                sessionStorage.removeItem('currentUser');
-            }
-        } catch (e) { console.error('Failed to update currentUser in sessionStorage', e); }
+        // FIX: Guard against undefined browser globals
+        if (typeof window !== 'undefined') {
+            try {
+                if (state.currentUser) {
+                    sessionStorage.setItem('currentUser', JSON.stringify(state.currentUser));
+                } else {
+                    sessionStorage.removeItem('currentUser');
+                }
+            } catch (e) { if (typeof console !== 'undefined') console.error('Failed to update currentUser in sessionStorage', e); }
+        }
     }, [state.currentUser]);
     
     useEffect(() => {
-        const root = window.document.documentElement;
-        if (state.theme === 'dark') {
-            root.classList.add('dark');
-        } else {
-            root.classList.remove('dark');
-        }
-        try {
-            localStorage.setItem('theme', state.theme);
-        } catch (e) {
-            console.error("Failed to save theme to localStorage", e);
+        // FIX: Guard against undefined browser globals
+        if (typeof window !== 'undefined') {
+            const root = window.document.documentElement;
+            if (state.theme === 'dark') {
+                root.classList.add('dark');
+            } else {
+                root.classList.remove('dark');
+            }
+            try {
+                localStorage.setItem('theme', state.theme);
+            } catch (e) {
+                if (typeof console !== 'undefined') console.error("Failed to save theme to localStorage", e);
+            }
         }
     }, [state.theme]);
 
 
     const dispatchAndBroadcast = useCallback((action: Action) => {
         dispatch(action);
-        channel.postMessage(action);
+        channelRef.current?.postMessage(action);
     }, []);
 
     const login = useCallback((username: string, pass: string): boolean => {
@@ -378,11 +400,11 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     
     const addUser = useCallback((username: string): User | null => {
         if (state.users.some(u => u.username === username)) {
-            console.error("Username already exists");
+            if (typeof console !== 'undefined') console.error("Username already exists");
             return null;
         }
         const newUser: User = {
-            id: crypto.randomUUID(),
+            id: generateId(), // FIX: Use guarded UUID generator
             username,
             password: Math.random().toString(36).slice(-8),
             role: 'viewer'
@@ -396,74 +418,60 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     const setLanguage = useCallback((language: Language) => dispatch({ type: 'SET_LANGUAGE', payload: { language } }), []);
     const setTheme = useCallback((theme: Theme) => dispatchAndBroadcast({ type: 'SET_THEME', payload: { theme } }), [dispatchAndBroadcast]);
 
-    // FIX: Added validation to prevent duplicates and simplified the data flow.
     const addGuard = useCallback(async (guard: Omit<Guard, 'id'>) => {
-        // 1. Validate: Check if a guard with the same employeeId already exists (case-insensitive).
         if (state.guards.some(g => g.employeeId.toLowerCase() === guard.employeeId.toLowerCase())) {
             const errorMessage = `A guard with Employee ID "${guard.employeeId}" already exists.`;
-            console.error(errorMessage);
-            // Throw an error to be caught by the UI, so it can display a message.
+            if (typeof console !== 'undefined') console.error(errorMessage);
             throw new Error(errorMessage);
         }
-
-        // 2. Act: Attempt to create the guard in the database.
-        // No need to manually dispatch on success; the realtime subscription will handle it.
         try {
             await createGuardDb(guard);
         } catch (e) {
-            console.error('Failed to create guard in Supabase. State was not updated.', e);
-            // Re-throw the error so the UI knows the operation failed.
+            if (typeof console !== 'undefined') console.error('Failed to create guard in Supabase. State was not updated.', e);
             throw e;
         }
     }, [state.guards]);
 
-    // FIX: Simplified to let the realtime subscription handle the state update on success.
     const updateGuard = useCallback(async (guard: Guard) => {
         try {
             await updateGuardDb(guard);
         } catch (e) {
-            console.error('Failed to update guard in Supabase, applying local update as fallback', e);
-            // As a fallback on DB error, update the local state manually.
+            if (typeof console !== 'undefined') console.error('Failed to update guard in Supabase, applying local update as fallback', e);
             dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard } });
             throw e;
         }
     }, [dispatchAndBroadcast]);
 
-    // FIX: Simplified to let the realtime subscription handle the state update on success.
     const deleteGuard = useCallback(async (guardId: string) => {
         try {
             await deleteGuardDb(guardId);
         } catch (e) {
-            console.error('Failed to delete guard in Supabase, removing locally as fallback', e);
-             // As a fallback on DB error, update the local state manually.
+            if (typeof console !== 'undefined') console.error('Failed to delete guard in Supabase, removing locally as fallback', e);
             dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId } });
             throw e;
         }
     }, [dispatchAndBroadcast]);
     
     const updateSchedule = useCallback(async (date: string, guardId: string, shiftId: string) => {
-        // Optimistic UI update for responsiveness
         dispatchAndBroadcast({ type: 'UPDATE_SCHEDULE', payload: { date, guardId, shiftId } });
         try {
             await upsertSchedule(date, guardId, shiftId);
         } catch (e) {
-            console.error('Failed to persist schedule to Supabase', e);
-            // Here you might want to add logic to revert the change if the DB call fails
+            if (typeof console !== 'undefined') console.error('Failed to persist schedule to Supabase', e);
         }
     }, [dispatchAndBroadcast]);
 
     const updateAttendance = useCallback(async (date: string, guardId: string, updates: Partial<AttendanceRecord>) => {
-        // Optimistic UI update for responsiveness
         dispatchAndBroadcast({ type: 'UPDATE_ATTENDANCE', payload: { date, guardId, updates } });
         try {
             await upsertAttendance(date, guardId, updates);
         } catch (e) {
-            console.error('Failed to persist attendance to Supabase', e);
+            if (typeof console !== 'undefined') console.error('Failed to persist attendance to Supabase', e);
         }
     }, [dispatchAndBroadcast]);
 
     const addReportTemplate = useCallback((template: Omit<ReportTemplate, 'id'>) => {
-        const newTemplate = { ...template, id: crypto.randomUUID() };
+        const newTemplate = { ...template, id: generateId() }; // FIX: Use guarded UUID generator
         dispatchAndBroadcast({ type: 'ADD_REPORT_TEMPLATE', payload: { template: newTemplate }});
     }, [dispatchAndBroadcast]);
     
@@ -478,26 +486,14 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
             const attendanceRange = await listAttendanceRange(startDate, endDate);
             dispatch({ type: 'SET_ATTENDANCE', payload: { attendance: { ...state.attendance, ...attendanceRange } } });
         } catch (e) {
-            console.error('Failed to load range from Supabase', e);
+            if (typeof console !== 'undefined') console.error('Failed to load range from Supabase', e);
         }
     }, [state.schedule, state.attendance]);
 
     const value = useMemo(() => ({
-        ...state,
-        loadRange,
-        addGuard,
-        updateGuard,
-        deleteGuard,
-        updateAttendance,
-        updateSchedule,
-        setLanguage,
-        setTheme,
-        login,
-        logout,
-        addUser,
-        deleteUser,
-        addReportTemplate,
-        deleteReportTemplate,
+        ...state, loadRange, addGuard, updateGuard, deleteGuard, updateAttendance,
+        updateSchedule, setLanguage, setTheme, login, logout, addUser, deleteUser,
+        addReportTemplate, deleteReportTemplate,
     }), [state, loadRange, addGuard, updateGuard, deleteGuard, updateAttendance, updateSchedule, setLanguage, setTheme, login, logout, addUser, deleteUser, addReportTemplate, deleteReportTemplate]);
 
     return <GuardianContext.Provider value={value}>{children}</GuardianContext.Provider>;
