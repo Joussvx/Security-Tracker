@@ -9,6 +9,35 @@ import { iterateDateRange, formatDate } from '../utils/dates';
 import { useTranslations } from '../hooks/useTranslations';
 import CustomSelect from './CustomSelect';
 
+// --- Type Definitions ---
+
+type AttendanceReportData = {
+    guardId: string;
+    present: number;
+    absent: number;
+    totalScheduled: number;
+};
+
+type OvertimeReportData = {
+    guardId: string;
+    shifts: number;
+    totalHours: number;
+};
+
+type OvertimeDetailReportData = {
+    date: string;
+    coveringGuardId: string;
+    coveredGuardId: string;
+    shiftId: string;
+};
+
+type ReportData = {
+    attendance: AttendanceReportData[];
+    overtime: OvertimeReportData[];
+    overtimeDetails: OvertimeDetailReportData[];
+};
+
+
 // --- Report Generation Logic ---
 
 type ReportDataContext = {
@@ -62,7 +91,7 @@ const generateReportData = (startDate: string, endDate: string, context: ReportD
 
 // --- Sub-components for Tables ---
 
-const AttendanceReportTable: FC<{data: any[], visibleColumns: Set<string>, guardMap: Map<string, Guard>}> = ({ data, visibleColumns, guardMap }) => {
+const AttendanceReportTable: FC<{data: AttendanceReportData[], visibleColumns: Set<string>, guardMap: Map<string, Guard>}> = ({ data, visibleColumns, guardMap }) => {
     const { t } = useTranslations();
     return (
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -102,7 +131,7 @@ const AttendanceReportTable: FC<{data: any[], visibleColumns: Set<string>, guard
     );
 };
 
-const OvertimeReportTable: FC<{data: any[], visibleColumns: Set<string>, guardMap: Map<string, Guard>}> = ({ data, visibleColumns, guardMap }) => {
+const OvertimeReportTable: FC<{data: OvertimeReportData[], visibleColumns: Set<string>, guardMap: Map<string, Guard>}> = ({ data, visibleColumns, guardMap }) => {
     const { t } = useTranslations();
     return (
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -130,7 +159,7 @@ const OvertimeReportTable: FC<{data: any[], visibleColumns: Set<string>, guardMa
     );
 };
 
-const OvertimeDetailReportTable: FC<{data: any[], visibleColumns: Set<string>, guardMap: Map<string, Guard>, shiftMap: Map<string, Shift>}> = ({ data, visibleColumns, guardMap, shiftMap }) => {
+const OvertimeDetailReportTable: FC<{data: OvertimeDetailReportData[], visibleColumns: Set<string>, guardMap: Map<string, Guard>, shiftMap: Map<string, Shift>}> = ({ data, visibleColumns, guardMap, shiftMap }) => {
     const { t } = useTranslations();
     return (
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -175,7 +204,7 @@ const Reports: React.FC = () => {
   const [reportType, setReportType] = useState<'attendance' | 'overtime' | 'overtime_detailed'>('attendance');
   const [startDate, setStartDate] = useState(firstDayOfMonth);
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
-  const [reportData, setReportData] = useState<any>(null);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
 
   const [templateName, setTemplateName] = useState('');
   const [templateError, setTemplateError] = useState('');
@@ -266,7 +295,7 @@ const Reports: React.FC = () => {
                 const guard = guardMap.get(guardId);
                 if (!guard) return;
                 const rate = totalScheduled > 0 ? `${((present / totalScheduled) * 100).toFixed(1)}%` : '0.0%';
-                const dataRow = { guard: guard.name, employeeId: guard.employeeId, present, absent, totalScheduled, attendanceRate: rate };
+                const dataRow: Record<string, string | number> = { guard: guard.name, employeeId: guard.employeeId, present, absent, totalScheduled, attendanceRate: rate };
                 rows.push(visibleCols.map(c => String(dataRow[c.id] ?? '')));
             });
             break;
@@ -274,7 +303,7 @@ const Reports: React.FC = () => {
             reportData.overtime.forEach(({ guardId, shifts, totalHours }) => {
                 const guard = guardMap.get(guardId);
                 if (!guard) return;
-                const dataRow = { guard: guard.name, employeeId: guard.employeeId, otShifts: shifts, otHours: totalHours };
+                const dataRow: Record<string, string | number> = { guard: guard.name, employeeId: guard.employeeId, otShifts: shifts, otHours: totalHours };
                 rows.push(visibleCols.map(c => String(dataRow[c.id] ?? '')));
             });
             break;
@@ -284,7 +313,7 @@ const Reports: React.FC = () => {
                 const coveredGuard = guardMap.get(detail.coveredGuardId);
                 const shift = shiftMap.get(detail.shiftId);
                 if (!coveringGuard || !coveredGuard || !shift) return;
-                const dataRow = { date: formatDate(detail.date), guard: coveringGuard.name, guardId: coveringGuard.employeeId, coveredFor: coveredGuard.name, coveredForId: coveredGuard.employeeId, shift: shift.name };
+                const dataRow: Record<string, string | number> = { date: formatDate(detail.date), guard: coveringGuard.name, guardId: coveringGuard.employeeId, coveredFor: coveredGuard.name, coveredForId: coveredGuard.employeeId, shift: shift.name };
                 rows.push(visibleCols.map(c => String(dataRow[c.id] ?? '')));
             });
             break;
@@ -338,7 +367,7 @@ const Reports: React.FC = () => {
                     <div>
                         <label id="report-type-label" className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('reportType')}</label>
                         <div className="mt-1">
-                            <CustomSelect aria-labelledby="report-type-label" options={reportOptions} value={reportType} onChange={(v) => setReportType(v as any)} />
+                            <CustomSelect aria-labelledby="report-type-label" options={reportOptions} value={reportType} onChange={(v) => setReportType(v as 'attendance' | 'overtime' | 'overtime_detailed')} />
                         </div>
                     </div>
                     <div>

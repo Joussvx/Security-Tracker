@@ -47,7 +47,7 @@ const ScheduleManagement: React.FC = () => {
                 return shiftId === shiftFilter;
             });
         });
-    }, [guards, shifts, shiftFilter, monthDays, schedule]);
+    }, [guards, shiftFilter, monthDays, schedule]);
 
     const handleShiftChange = (date: string, guardId: string, shiftId: string) => {
         if (isViewer) return;

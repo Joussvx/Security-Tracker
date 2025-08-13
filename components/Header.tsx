@@ -30,7 +30,12 @@ const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const navItems: { view: View; key: string }[] = [
+  interface NavItem {
+    view: View;
+    key: string;
+  }
+
+  const navItems: NavItem[] = [
     { view: 'Dashboard', key: 'dashboard' },
     { view: 'Schedule', key: 'schedulePlanner' },
     { view: 'Guards', key: 'guards' },

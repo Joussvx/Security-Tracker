@@ -23,7 +23,7 @@ interface CalendarProps {
     selectedDate: string;
     onDateChange: (date: string) => void;
     month: Date;
-    onMonthChange: (date: Date) => void;
+    onMonthChange: (newMonth: Date) => void;
     language: Language;
 }
 
@@ -80,7 +80,7 @@ const Calendar: React.FC<CalendarProps> = ({ selectedDate, onDateChange, month, 
 const NotesModal: React.FC<{
     isOpen: boolean;
     note: string;
-    onNoteChange: (note: string) => void;
+    onNoteChange: (newNote: string) => void;
     onSave: () => void;
     onClose: () => void;
     guardName: string;
@@ -177,9 +177,9 @@ interface DashboardTableRowProps {
     dailyAttendance: Record<string, AttendanceRecord>;
     coverOptions: {value: string; label: string}[];
     statusOptions: {value: string; label: string}[];
-    onUpdateAttendance: (updates: Partial<AttendanceRecord>) => void;
-    onUpdateCoverAttendance: (guardId: string, updates: Partial<AttendanceRecord>) => void;
-    onOpenNoteModal: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    onUpdateAttendance: (newUpdates: Partial<AttendanceRecord>) => void;
+    onUpdateCoverAttendance: (guardId: string, newUpdates: Partial<AttendanceRecord>) => void;
+    onOpenNoteModal: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 const DashboardTableRow: FC<DashboardTableRowProps> = React.memo(({
@@ -210,9 +210,9 @@ const DashboardTableRow: FC<DashboardTableRowProps> = React.memo(({
                     options={coverOptions}
                     value={guardAttendance.coveredBy || ''}
                     onChange={value => {
-                        const updates: Partial<AttendanceRecord> = { coveredBy: value || undefined };
-                        if (!value) updates.isOvertime = false;
-                        onUpdateAttendance(updates);
+                                const newUpdates: Partial<AttendanceRecord> = { coveredBy: value || undefined };
+                                if (!value) newUpdates.isOvertime = false;
+                                onUpdateAttendance(newUpdates);
                     }}
                     placeholder={t('assignCover')}
                     allowClear={true}
@@ -256,7 +256,7 @@ const DashboardTableRow: FC<DashboardTableRowProps> = React.memo(({
         </tr>
     );
 });
-
+DashboardTableRow.displayName = 'DashboardTableRow';
 
 // --- Main Component ---
 
@@ -300,10 +300,9 @@ const Dashboard: React.FC = () => {
 
     const whoIsCoveringWhoMap = useMemo(() => {
         const map = new Map<string, Guard>(); // Key: covering guard ID, Value: covered guard
-        Object.values(dailyAttendance).forEach((record: any) => {
-            const rec = record as AttendanceRecord;
-            if (rec.coveredBy && guardMap.has(rec.guardId)) {
-                map.set(rec.coveredBy, guardMap.get(rec.guardId)!);
+        Object.values(dailyAttendance).forEach((record: AttendanceRecord) => {
+            if (record.coveredBy && guardMap.has(record.guardId)) {
+                map.set(record.coveredBy, guardMap.get(record.guardId)!);
             }
         });
         return map;
@@ -407,8 +406,8 @@ const Dashboard: React.FC = () => {
                                                 dailyAttendance={dailyAttendance}
                                                 coverOptions={coverOptions}
                                                 statusOptions={statusOptions}
-                                                onUpdateAttendance={(updates) => updateAttendance(selectedDate, guard.id, updates)}
-                                                onUpdateCoverAttendance={(gid, updates) => updateAttendance(selectedDate, gid, updates)}
+                                                onUpdateAttendance={(newUpdates) => updateAttendance(selectedDate, guard.id, newUpdates)}
+                                                onUpdateCoverAttendance={(gid, newUpdates) => updateAttendance(selectedDate, gid, newUpdates)}
                                                 onOpenNoteModal={(e) => handleOpenNoteModal(guard, e)}
                                             />
                                         );

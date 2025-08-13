@@ -62,7 +62,7 @@ export async function deleteGuardDb(guardId: string): Promise<void> {
   if (error) throw error;
 }
 
-export function subscribeGuards(onChange: (event: { type: 'INSERT' | 'UPDATE' | 'DELETE'; new?: Guard; oldId?: string }) => void) {
+export function subscribeGuards(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; new?: Guard; oldId?: string }) => void) {
   return supabase
     .channel('guards_changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'guards' }, (payload) => {
@@ -71,7 +71,7 @@ export function subscribeGuards(onChange: (event: { type: 'INSERT' | 'UPDATE' | 
       } else if (payload.eventType === 'UPDATE') {
         onChange({ type: 'UPDATE', new: dbRowToGuard(payload.new as DbGuardRow) });
       } else if (payload.eventType === 'DELETE') {
-        onChange({ type: 'DELETE', oldId: (payload.old as any).id as string });
+        onChange({ type: 'DELETE', oldId: (payload.old as { id: string }).id });
       }
     })
     .subscribe();

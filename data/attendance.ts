@@ -47,9 +47,9 @@ export async function upsertAttendance(date: string, guardId: string, updates: P
     status: updates.status,
     covered_by: updates.coveredBy ?? null,
     is_overtime: updates.isOvertime ?? null,
-  } as any;
+  };
   if (existing) {
-    const { error } = await supabase.from('attendance').update(payload).eq('id', (existing as any).id);
+    const { error } = await supabase.from('attendance').update(payload).eq('id', existing.id);
     if (error) throw error;
   } else {
     const { error } = await supabase.from('attendance').insert(payload);
@@ -57,7 +57,7 @@ export async function upsertAttendance(date: string, guardId: string, updates: P
   }
 }
 
-export function subscribeAttendance(onChange: (event: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbAttendanceRow }) => void) {
+export function subscribeAttendance(onChange: (e: { type: 'INSERT' | 'UPDATE' | 'DELETE'; row: DbAttendanceRow }) => void) {
   return supabase
     .channel('attendance_changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, (payload) => {
