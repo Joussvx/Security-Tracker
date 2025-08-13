@@ -2,7 +2,7 @@
 
 import { Language, AttendanceStatus } from '../types';
 
-type TranslationParams = Record<string, string | number>;
+type TranslationParams = Record<string, string>;
 
 type TranslationKeys = {
   [key: string]: string | ((params: TranslationParams) => string);
