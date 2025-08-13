@@ -294,11 +294,11 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
 
                 const sub = subscribeGuards((evt) => {
                     if (evt.type === 'INSERT' && evt.new) {
-                        dispatchAndBroadcast({ type: 'ADD_GUARD', payload: { guard: evt.new } });
+                        dispatch({ type: 'ADD_GUARD', payload: { guard: evt.new } });
                     } else if (evt.type === 'UPDATE' && evt.new) {
-                        dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard: evt.new } });
+                        dispatch({ type: 'UPDATE_GUARD', payload: { guard: evt.new } });
                     } else if (evt.type === 'DELETE' && evt.oldId) {
-                        dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId: evt.oldId } });
+                        dispatch({ type: 'DELETE_GUARD', payload: { guardId: evt.oldId } });
                     }
                 });
                 const subSchedule = subscribeSchedule((evt) => {
@@ -320,7 +320,6 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
         };
         const cleanup = init();
         return () => { Promise.resolve(cleanup).catch(() => undefined); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -382,8 +381,7 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [state.theme]);
 
 
-    const dispatchAndBroadcast = useCallback((action: Action) => {
-        dispatch(action);
+    const broadcast = useCallback((action: Action) => {
         channelRef.current?.postMessage(action);
     }, []);
 
@@ -409,14 +407,24 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
             password: Math.random().toString(36).slice(-8),
             role: 'viewer'
         };
-        dispatchAndBroadcast({ type: 'ADD_USER', payload: { user: newUser } });
+        const action: Action = { type: 'ADD_USER', payload: { user: newUser } };
+        dispatch(action);
+        broadcast(action);
         return newUser;
-    }, [state.users, dispatchAndBroadcast]);
+    }, [state.users, broadcast]);
     
-    const deleteUser = useCallback((userId: string) => dispatchAndBroadcast({ type: 'DELETE_USER', payload: { userId } }), [dispatchAndBroadcast]);
+    const deleteUser = useCallback((userId: string) => {
+        const action: Action = { type: 'DELETE_USER', payload: { userId } };
+        dispatch(action);
+        broadcast(action);
+    }, [broadcast]);
 
     const setLanguage = useCallback((language: Language) => dispatch({ type: 'SET_LANGUAGE', payload: { language } }), []);
-    const setTheme = useCallback((theme: Theme) => dispatchAndBroadcast({ type: 'SET_THEME', payload: { theme } }), [dispatchAndBroadcast]);
+    const setTheme = useCallback((theme: Theme) => {
+        const action: Action = { type: 'SET_THEME', payload: { theme } };
+        dispatch(action);
+        broadcast(action);
+    }, [broadcast]);
 
     const addGuard = useCallback(async (guard: Omit<Guard, 'id'>) => {
         if (state.guards.some(g => g.employeeId.toLowerCase() === guard.employeeId.toLowerCase())) {
@@ -425,59 +433,74 @@ export const GuardianProvider: React.FC<{ children: ReactNode }> = ({ children }
             throw new Error(errorMessage);
         }
         try {
-            await createGuardDb(guard);
+            const newGuard = await createGuardDb(guard);
+            const action: Action = { type: 'ADD_GUARD', payload: { guard: newGuard } };
+            dispatch(action);
+            broadcast(action);
         } catch (e) {
             if (typeof console !== 'undefined') console.error('Failed to create guard in Supabase. State was not updated.', e);
             throw e;
         }
-    }, [state.guards]);
+    }, [state.guards, broadcast]);
 
     const updateGuard = useCallback(async (guard: Guard) => {
         try {
-            await updateGuardDb(guard);
+            const updatedGuard = await updateGuardDb(guard);
+            const action: Action = { type: 'UPDATE_GUARD', payload: { guard: updatedGuard } };
+            dispatch(action);
+            broadcast(action);
         } catch (e) {
-            if (typeof console !== 'undefined') console.error('Failed to update guard in Supabase, applying local update as fallback', e);
-            dispatchAndBroadcast({ type: 'UPDATE_GUARD', payload: { guard } });
+            if (typeof console !== 'undefined') console.error('Failed to update guard in Supabase. State was not updated.', e);
             throw e;
         }
-    }, [dispatchAndBroadcast]);
+    }, [broadcast]);
 
     const deleteGuard = useCallback(async (guardId: string) => {
         try {
             await deleteGuardDb(guardId);
+            const action: Action = { type: 'DELETE_GUARD', payload: { guardId } };
+            dispatch(action);
+            broadcast(action);
         } catch (e) {
-            if (typeof console !== 'undefined') console.error('Failed to delete guard in Supabase, removing locally as fallback', e);
-            dispatchAndBroadcast({ type: 'DELETE_GUARD', payload: { guardId } });
+            if (typeof console !== 'undefined') console.error('Failed to delete guard in Supabase. State was not updated.', e);
             throw e;
         }
-    }, [dispatchAndBroadcast]);
+    }, [broadcast]);
     
     const updateSchedule = useCallback(async (date: string, guardId: string, shiftId: string) => {
-        dispatchAndBroadcast({ type: 'UPDATE_SCHEDULE', payload: { date, guardId, shiftId } });
         try {
             await upsertSchedule(date, guardId, shiftId);
+            const action: Action = { type: 'UPDATE_SCHEDULE', payload: { date, guardId, shiftId } };
+            dispatch(action);
+            broadcast(action);
         } catch (e) {
             if (typeof console !== 'undefined') console.error('Failed to persist schedule to Supabase', e);
         }
-    }, [dispatchAndBroadcast]);
+    }, [broadcast]);
 
     const updateAttendance = useCallback(async (date: string, guardId: string, updates: Partial<AttendanceRecord>) => {
-        dispatchAndBroadcast({ type: 'UPDATE_ATTENDANCE', payload: { date, guardId, updates } });
         try {
             await upsertAttendance(date, guardId, updates);
+            const action: Action = { type: 'UPDATE_ATTENDANCE', payload: { date, guardId, updates } };
+            dispatch(action);
+            broadcast(action);
         } catch (e) {
             if (typeof console !== 'undefined') console.error('Failed to persist attendance to Supabase', e);
         }
-    }, [dispatchAndBroadcast]);
+    }, [broadcast]);
 
     const addReportTemplate = useCallback((template: Omit<ReportTemplate, 'id'>) => {
         const newTemplate = { ...template, id: generateId() }; // FIX: Use guarded UUID generator
-        dispatchAndBroadcast({ type: 'ADD_REPORT_TEMPLATE', payload: { template: newTemplate }});
-    }, [dispatchAndBroadcast]);
+        const action: Action = { type: 'ADD_REPORT_TEMPLATE', payload: { template: newTemplate }};
+        dispatch(action);
+        broadcast(action);
+    }, [broadcast]);
     
     const deleteReportTemplate = useCallback((templateId: string) => {
-        dispatchAndBroadcast({ type: 'DELETE_REPORT_TEMPLATE', payload: { templateId }});
-    }, [dispatchAndBroadcast]);
+        const action: Action = { type: 'DELETE_REPORT_TEMPLATE', payload: { templateId }};
+        dispatch(action);
+        broadcast(action);
+    }, [broadcast]);
 
     const loadRange = useCallback(async (startDate: string, endDate: string) => {
         try {

@@ -367,7 +367,7 @@ const Reports: React.FC = () => {
                     <div>
                         <label id="report-type-label" className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('reportType')}</label>
                         <div className="mt-1">
-                            <CustomSelect aria-labelledby="report-type-label" options={reportOptions} value={reportType} onChange={(v) => setReportType(v as 'attendance' | 'overtime' | 'overtime_detailed')} />
+                            <CustomSelect aria-labelledby="report-type-label" options={reportOptions} selectedValue={reportType} onChange={(v) => setReportType(v as 'attendance' | 'overtime' | 'overtime_detailed')} />
                         </div>
                     </div>
                     <div>
